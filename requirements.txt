@@ -1,0 +1,10 @@
+fastapi[standard]
+langchain
+langchain-community
+langchain-groq
+neo4j
+sentence-transformers
+torch==2.2.0
+langchain-huggingface
+
+uvicorn
