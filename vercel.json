@@ -1,0 +1,9 @@
+{
+	"version": 2,
+	"public": false,
+	"builds": [{ "src": "api/brain.py", "use": "@vercel/python" }],
+	"routes": [
+		{ "src": "/*", "dest": "api/brain.py" }
+
+	]
+}
