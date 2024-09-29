@@ -1,4 +1,6 @@
-from fastapi import FastAPI, HTTPException, Request
+
+
+from fastapi import FastAPI, HTTPException,Request
 from pydantic import BaseModel
 from langchain.prompts import PromptTemplate
 from langchain_groq import ChatGroq
@@ -6,34 +8,38 @@ from langchain_core.runnables import RunnableSequence
 from langchain_community.graphs import Neo4jGraph
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
+from sentence_transformers import SentenceTransformer
 from langchain_community.chains.graph_qa.cypher import GraphCypherQAChain
 import os
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
+
+
+
+
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Neo4jVector
-import requests
 
 # Load environment variables
 load_dotenv()
 
-app = FastAPI()
-
-# Add CORS middleware
+app = FastAPI()# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=['http://localhost:3000', "http://localhost:5173", "http://localhost:2424"],
+    allow_origins=['http://localhost:3000',"http://localhost:5173","http://localhost:2424"],  # client URL
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*']
 )
+
 
 # Initialize Neo4j and Groq API credentials
 neo4j_uri = os.getenv('NEO4J_URI')
 neo4j_password = os.getenv('NEO4J_PASSWORD')
 neo4j_username = os.getenv('NEO4J_USERNAME')
 groq_api_key = os.getenv('GROQ_API_KEY')
-huggingface_api_key = os.getenv('HUGGINGFACE_API_KEY')
+
+
 
 # Initialize Neo4jGraph
 graph = Neo4jGraph(
@@ -47,23 +53,20 @@ graph = Neo4jGraph(
 # Initialize the LLM
 llm = ChatGroq(
     api_key=groq_api_key,
-    model_name="llama3-70b-8192",
+   model_name="llama3-70b-8192",  # Updated to a more recent model
     temperature=0.4,
     streaming=False,
     verbose=True
 )
 
+
+
 # Initialize the embedding model
 model_name = "sentence-transformers/all-MiniLM-L6-v2"
-
-# Function to get embeddings from Hugging Face API
-def get_embedding(text):
-    api_url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{model_name}"
-    headers = {"Authorization": f"Bearer {huggingface_api_key}"}
-    response = requests.post(api_url, headers=headers, json={"inputs": text})
-    return response.json()
+embedding_model = SentenceTransformer(model_name)
 
 # Define the query detection prompt template
+#when user says bye bye or end call you should end the conversation 
 query_detection_prompt = ChatPromptTemplate.from_messages([
     ("system", """You are an AI assistant that analyzes customer queries for an e-commerce platform. Your task is to detect the intention behind each query and categorize it into one of the following categories:
         
@@ -79,7 +82,8 @@ query_detection_prompt = ChatPromptTemplate.from_messages([
     ("human", "Analyze the following customer query and determine its category:\n\n{query}")
 ])
 
-# Cypher generation template
+# point 8 Use parameters for variable inputs (e.g., $userId instead of hardcoded values).
+# Cypher generation template "You" refers to the seller, "I" refers to the user/customer.  this instruction is asking sellerid
 CYPHER_GENERATION_TEMPLATE = """
 Task: Generate a Cypher query based on the given schema and question. Ensure privacy and accuracy.
 
@@ -96,7 +100,7 @@ Instructions:
 5. Use case-insensitive and fuzzy search for text properties.
 6. Limit results to prevent overwhelming responses.
 7. Always use OPTIONAL MATCH for potentially missing relationships.
-8. Use parameters for variable inputs (e.g., $userId instead of hardcoded values).
+8. 
 9. Include appropriate WHERE clauses to filter out null or irrelevant results.
 10. For text searches, use toLower() for case-insensitive matching.
 11. Use apoc.text.fuzzyMatch for more flexible text matching when appropriate.
@@ -125,7 +129,7 @@ response_prompt = PromptTemplate(
 )
 
 def cypher_search(query):
-    # the full context of cypher qa chain is returnring expected results but not this func so need to modify this
+# the full context of cypher qa chain is returnring expected results but not this func so need to modify this 
     try:
         if not query or not isinstance(query, str):
             raise ValueError("Invalid query provided")
@@ -140,9 +144,11 @@ def cypher_search(query):
 
         result = cypher_chain.invoke({"query": query, "schema": graph.schema})
 
-        if not result :
-            print("No specific information found for your query")
-            return []
+
+        if not result or 'result' not in result:
+            return "No specific information found for your query."
+
+        # response = llm(response_prompt.format(response=result['result']))
       
         return result
 
@@ -209,10 +215,12 @@ class ChatRequest(BaseModel):
     messages: list[Message]
 
 @app.post('/brain/{userid}/{sellername}/{sellerid}')
-async def brain(userid: str, sellerid: str, sellername: str, request: ChatRequest):
+async def brain(userid: str, sellerid: str,sellername:str,request: ChatRequest):
     try:
         messages = request.messages
 
+
+        #  theprev message by user and current message need to be clubbed together 
         if not groq_api_key:
             raise HTTPException(status_code=500, detail="GROQ_API_KEY is not set in environment variables")
 
@@ -220,21 +228,21 @@ async def brain(userid: str, sellerid: str, sellername: str, request: ChatReques
         current_message_content = messages[-1].content if messages else ""
 
         prompt = PromptTemplate.from_template(TEMPLATE)
-        print(userid, sellerid, sellername)
+        print(userid,sellerid,sellername)
         query_detection_chain = query_detection_prompt | llm | StrOutputParser()
         detected_intent = query_detection_chain.invoke({"query": current_message_content})
 
         if "Product Information" in detected_intent:
-            query_embedding = get_embedding(current_message_content)
-            print(query_embedding)
+            query_embedding = embedding_model.encode(current_message_content)
             search_results = search_similar_products(query_embedding, top_k=5)
            
             cypher_results = cypher_search(current_message_content)
 
+
             product_context = "\n".join(
                 [f"{r['product.title']} - {r['product.description']}" for r in search_results]
             )
-    
+    ## here if product info cypher results need to have higher priority
             if cypher_results:
                 product_context += f"\nAdditional details:\n{cypher_results}"
 
@@ -285,6 +293,7 @@ async def brain(userid: str, sellerid: str, sellername: str, request: ChatReques
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+    
 
 # Initialize HuggingFaceEmbeddings
 model_kwargs = {'device': 'cpu'}
@@ -295,6 +304,8 @@ hug_face_embeddings = HuggingFaceEmbeddings(
     encode_kwargs=encode_kwargs
 )
 
+
+
 # Function to initialize or update the vector index
 def initialize_vector_index():
     try:
@@ -304,17 +315,21 @@ def initialize_vector_index():
             node_label="Product",
             embedding_node_property="embedding",
             text_node_properties=["title", "description", "attributes", "category", "brand"],
-            index_name="product_embedding_index",
+            index_name="product_embedding_index",  # Ensure this name matches
             search_type="hybrid"
         )
         print("Vector index initialized.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error initializing vector index: {str(e)}")
 
-# FastAPI route to initialize the vector index
+
+
+
+
+    # FastAPI route to initialize the vector index
 @app.post("/webhook/initialize-vector-index")
 async def initialize_vector_index_route(request: Request):
-    # Log incoming request for debugging
+     # Log incoming request for debugging
     # body = await request.json()
     # print("Webhook triggered with data:", body)
     initialize_vector_index()

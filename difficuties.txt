@@ -1,0 +1,16 @@
+this text file comprises of difficulties faced while 
+
+
+2. deploying
+no standard service to deploy
+vercel has limit and sentence transfromers takes too much memory and space 
+
+
+instead of running enbedding in server using hugging face api for that to reduce package AND improves code speed
+
+
+
+ removed these from requirements.txt file
+ 
+sentence-transformers
+torch==2.2.0
