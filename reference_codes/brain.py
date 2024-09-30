@@ -297,6 +297,8 @@ hug_face_embeddings = HuggingFaceEmbeddings(
 
 # Function to initialize or update the vector index
 def initialize_vector_index():
+
+    # this function can't be moved to js it should be in python 
     try:
         print("Initializing vector index...")
         Neo4jVector.from_existing_graph(

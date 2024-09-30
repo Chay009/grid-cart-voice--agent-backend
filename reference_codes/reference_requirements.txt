@@ -1,12 +1,11 @@
-fastapi[standard]
-
-langchain-community
-
-
-
-
-# this is needed for vector store to graph
-langchain-huggingface
 sentence-transformers
+torch==2.2.0
+fastapi[standard]
+langchain
+langchain-community
+langchain-groq
+neo4j
+
+langchain-huggingface
 
 uvicorn
