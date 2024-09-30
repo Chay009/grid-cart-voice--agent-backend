@@ -3,7 +3,7 @@
 	"public": false,
 	"builds": [{ "src": "brain.py", "use": "@vercel/python" }],
 	"routes": [
-		{ "src": "/*", "dest": "brain.py" }
+		{ "src": "/", "dest": "brain.py" }
 
 	]
 }
