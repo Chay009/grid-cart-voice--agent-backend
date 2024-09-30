@@ -7,6 +7,6 @@ langchain-community
 
 # this is needed for vector store to graph
 langchain-huggingface
-sentence-transformers
+
 
 uvicorn
