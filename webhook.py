@@ -3,6 +3,10 @@ from langchain_community.vectorstores import Neo4jVector
 import os
 import requests
 from dotenv import load_dotenv
+from typing import List, Dict, Any
+import requests
+from langchain_core.embeddings import Embeddings
+from langchain_core.pydantic_v1 import BaseModel, Extra, Field
 
 app = FastAPI()
 
@@ -13,11 +17,8 @@ load_dotenv()
 neo4j_uri = os.getenv('NEO4J_URI')
 neo4j_password = os.getenv('NEO4J_PASSWORD')
 neo4j_username = os.getenv('NEO4J_USERNAME')
-import os
-from typing import List, Dict, Any
-import requests
-from langchain_core.embeddings import Embeddings
-from langchain_core.pydantic_v1 import BaseModel, Extra, Field
+
+
 
 class HuggingFaceInferenceEmbeddings(BaseModel, Embeddings):
     """HuggingFace Inference API embedding models.

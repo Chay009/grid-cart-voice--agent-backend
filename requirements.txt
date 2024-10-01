@@ -4,7 +4,7 @@ langchain-community
 
 
 
-
+neo4j
 
 
 uvicorn
