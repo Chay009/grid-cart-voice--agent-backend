@@ -10,7 +10,7 @@ from langchain_community.chains.graph_qa.cypher import GraphCypherQAChain
 import os
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings # this is the main cause
 from langchain_community.vectorstores import Neo4jVector
 import requests
 
