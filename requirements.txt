@@ -2,6 +2,9 @@ fastapi[standard]
 
 langchain-community
 
+ langchain==0.2.15 
+ langchain-core==0.2.37
+
 
 
 neo4j

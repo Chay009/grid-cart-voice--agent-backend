@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request
-from pydantic import BaseModel
-from langchain.prompts import PromptTemplate
+
+from langchain_core.prompts import PromptTemplate
 from langchain_groq import ChatGroq
 from langchain_core.runnables import RunnableSequence
 from langchain_community.graphs import Neo4jGraph
@@ -10,10 +10,12 @@ from langchain_community.chains.graph_qa.cypher import GraphCypherQAChain
 import os
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
-from langchain_huggingface import HuggingFaceEmbeddings # this is the main cause
+
 from langchain_community.vectorstores import Neo4jVector
 import requests
-
+from pydantic import BaseModel, Extra, Field
+from langchain_core.embeddings import Embeddings
+from typing import List
 # Load environment variables
 load_dotenv()
 
@@ -22,7 +24,7 @@ app = FastAPI()
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=['http://localhost:3000', "http://localhost:5173", "http://localhost:2424"],
+    allow_origins=['http://localhost:3000', "http://localhost:5173", "http://localhost:2424",os.getenv('CLIENT_URL')],
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*']
@@ -286,41 +288,99 @@ async def brain(userid: str, sellerid: str, sellername: str, request: ChatReques
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
-# Initialize HuggingFaceEmbeddings
-model_kwargs = {'device': 'cpu'}
-encode_kwargs = {'normalize_embeddings': False}
-hug_face_embeddings = HuggingFaceEmbeddings(
-    model_name=model_name,
-    model_kwargs=model_kwargs,
-    encode_kwargs=encode_kwargs
+
+
+
+#######################################################################################################################################
+
+   
+class HuggingFaceInferenceEmbeddings(BaseModel, Embeddings):
+    """HuggingFace Inference API embedding models.
+
+    To use, you should have an API key for the Hugging Face Inference API stored in the HUGGINGFACE_API_KEY environment variable.
+
+    Example:
+        .. code-block:: python
+
+            from huggingface_inference_embeddings import HuggingFaceInferenceEmbeddings
+
+            model_name = "sentence-transformers/all-MiniLM-L6-v2"
+            hf = HuggingFaceInferenceEmbeddings(model_name=model_name)
+    """
+
+    api_key: str = Field(default_factory=lambda: os.getenv('HUGGINGFACE_API_KEY'))
+    """Hugging Face API key."""
+    model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
+    """Model name to use."""
+
+    class Config:
+        """Configuration for this pydantic object."""
+        extra = Extra.forbid
+
+    def _get_embedding(self, text: str) -> List[float]:
+        """Get embeddings for a single piece of text."""
+        api_url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{self.model_name}"
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        try:
+            response = requests.post(api_url, headers=headers, json={"inputs": text})
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            error_msg = f"Error calling Hugging Face API: {str(e)}"
+            if response.text:
+                error_msg += f"\nResponse body: {response.text}"
+            raise ValueError(error_msg)
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        """Compute doc embeddings using the Hugging Face Inference API.
+
+        Args:
+            texts: The list of texts to embed.
+
+        Returns:
+            List of embeddings, one for each text.
+        """
+        return [self._get_embedding(text) for text in texts]
+
+    def embed_query(self, text: str) -> List[float]:
+        """Compute query embeddings using the Hugging Face Inference API.
+
+        Args:
+            text: The text to embed.
+
+        Returns:
+            Embeddings for the text.
+        """
+        return self._get_embedding(text)
+
+# Usage example:
+hf_inference_embeddings = HuggingFaceInferenceEmbeddings(
+    model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
-
-# Function to initialize or update the vector index
 def initialize_vector_index():
-
-    # this function can't be moved to js it should be in python 
+    """Initialize the vector index in Neo4j using embeddings from Hugging Face."""
     try:
         print("Initializing vector index...")
-        Neo4jVector.from_existing_graph(
-            embedding=hug_face_embeddings,
+        neo4j_vector = Neo4jVector.from_existing_graph(
+            embedding=hf_inference_embeddings,  # Use the custom Hugging Face embedding
             node_label="Product",
             embedding_node_property="embedding",
             text_node_properties=["title", "description", "attributes", "category", "brand"],
             index_name="product_embedding_index",
-            search_type="hybrid"
+            search_type="hybrid",
+            url=neo4j_uri,
+            username=neo4j_username,
+            password=neo4j_password
         )
         print("Vector index initialized.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error initializing vector index: {str(e)}")
 
-# FastAPI route to initialize the vector index
 @app.post("/webhook/initialize-vector-index")
 async def initialize_vector_index_route(request: Request):
-    # Log incoming request for debugging
-    # body = await request.json()
-    # print("Webhook triggered with data:", body)
+    """Endpoint to initialize vector index."""
     initialize_vector_index()
-    print("created embeddings for non initialized vectors")
+    print("Created embeddings for non-initialized vectors")
     return {"message": "Vector index initialized successfully."}
 
 if __name__ == '__main__':

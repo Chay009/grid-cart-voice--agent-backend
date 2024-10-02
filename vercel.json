@@ -1,9 +1,11 @@
 {
 	"version": 2,
 	"public": false,
-	"builds": [{ "src": "webhook.py", "use": "@vercel/python" }],
+	"builds": [
+		{ "src": "brain.py", "use": "@vercel/python" }
+	],
 	"routes": [
-		{ "src": "/webhook/initialize-vector-index", "dest": "webhook.py" }
-		
-	  ]
+		{ "src": "/webhook/initialize-vector-index", "dest": "brain.py" },
+		{ "src": "/brain/(.*)", "dest": "brain.py" }  
+	]
 }
